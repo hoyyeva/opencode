@@ -56,6 +56,7 @@ export const makeClient = <
   options: Config,
   connection: SqliteConnection,
   typeId: TypeId,
+  driver: string,
   extensions: (acquirer: Effect.Effect<SqliteConnection, SqlError, Scope.Scope>) => Extensions,
 ) =>
   Effect.gen(function* () {
@@ -78,6 +79,7 @@ export const makeClient = <
         acquirer,
         compiler: Statement.makeCompilerSqlite(options.transformQueryNames),
         transactionAcquirer,
+        driver,
         spanAttributes: [
           ...(options.spanAttributes ? Object.entries(options.spanAttributes) : []),
           ["db.system.name", "sqlite"],

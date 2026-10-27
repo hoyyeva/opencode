@@ -180,11 +180,32 @@ const toJsonSchema = (schema: Schema.Top): JsonSchema.JsonSchema => {
   // nested schema directly, then remove unused `$defs`. Recursive references stay intact because
   // expanding them would never terminate.
   const normalized = flattenAllOf(
-    Object.keys(document.definitions).length === 0
-      ? document.schema
-      : { ...document.schema, $defs: document.definitions },
+    dropSafeIntegerBounds(
+      Object.keys(document.definitions).length === 0
+        ? document.schema
+        : { ...document.schema, $defs: document.definitions },
+    ),
   )
   return dropDefinitionsIfResolved(inlineLocalReferences(normalized)) as JsonSchema.JsonSchema
+}
+
+// Effect bounds every `Schema.Int` by the safe integer range. Drop those implied bounds so providers only see the
+// limits a tool declares.
+const dropSafeIntegerBounds = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(dropSafeIntegerBounds)
+  if (!isRecord(value)) return value
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(
+        ([key, item]) =>
+          value.type !== "integer" ||
+          !(
+            (key === "minimum" && item === Number.MIN_SAFE_INTEGER) ||
+            (key === "maximum" && item === Number.MAX_SAFE_INTEGER)
+          ),
+      )
+      .map(([key, item]) => [key, dropSafeIntegerBounds(item)]),
+  )
 }
 
 const flattenAllOf = (value: unknown): unknown => {

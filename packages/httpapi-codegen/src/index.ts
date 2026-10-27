@@ -93,7 +93,7 @@ type PromiseInputField =
   | (InputField & { readonly optional: boolean })
   | { readonly name: string; readonly source: "wildcard"; readonly optional: false }
 
-const resolveHttpApiStatus = SchemaAST.resolveAt<number>("httpApiStatus")
+const resolveHttpApiStatusAnnotation = SchemaAST.resolveAt<number>("httpApiStatus")
 const resolveHttpApiEncoding = SchemaAST.resolveAt<HttpApiSchema.Encoding>("~httpApiEncoding")
 const Manifest = Schema.fromJsonString(Schema.Array(Schema.String))
 const manifestName = ".httpapi-codegen.json"
@@ -696,9 +696,9 @@ function renderImportedEffectFiles(
           : `${item.operation.success === "stream" ? "preserveStream" : "preserveEffect"}<${prefix}Output>()(${result})`
       const declarations =
         options.shapeModule === undefined && item.operation.inputMode !== "none"
-          ? `type ${prefix}Request = Parameters<${rawGroup}[${JSON.stringify(item.endpoint.identifier)}]>[0]\ntype ${prefix}Input = { ${input} }\n`
+          ? `type ${prefix}Request = Parameters<${rawGroup}[${JSON.stringify(item.endpoint.identifier)}]>[0] & { readonly responseMode?: "decoded-only" }\ntype ${prefix}Input = { ${input} }\n`
           : isOpaquePayload(item)
-            ? `type ${prefix}Request = Parameters<${rawGroup}[${JSON.stringify(item.endpoint.identifier)}]>[0]\n`
+            ? `type ${prefix}Request = Parameters<${rawGroup}[${JSON.stringify(item.endpoint.identifier)}]>[0] & { readonly responseMode?: "decoded-only" }\n`
             : ""
       return `${declarations}const ${adapter} = (raw: ${rawGroup}) => (${argument}) => ${output}`
     })
@@ -1454,7 +1454,10 @@ function sameChecks(left: SchemaAST.Checks | undefined, right: SchemaAST.Checks 
 }
 
 function sameContext(left: SchemaAST.Context | undefined, right: SchemaAST.Context | undefined) {
-  return left?.isOptional === right?.isOptional && left?.isMutable === right?.isMutable
+  return (
+    (left?.isOptional ?? false) === (right?.isOptional ?? false) &&
+    (left?.isMutable ?? false) === (right?.isMutable ?? false)
+  )
 }
 
 export function write(
@@ -1738,7 +1741,24 @@ function isDataEnvelope(schema: Schema.Top) {
   )
 }
 
-function isStreamSchema(schema: Schema.Top): schema is HttpApiSchema.StreamSchema {
+// HttpApiSchema.status stores the status as a key annotation unless the schema has checks or its own status
+// annotation; a later check drops the key annotation.
+function resolveHttpApiStatus(ast: SchemaAST.AST) {
+  const annotations = SchemaAST.resolve(ast)
+  if (annotations !== undefined && "httpApiStatus" in annotations) return resolveHttpApiStatusAnnotation(ast)
+  return ast.checks === undefined ? ast.context?.annotations?.httpApiStatus : undefined
+}
+
+// Generated code keeps annotations but drops key annotations, so emit the status as an annotation.
+function withStatusAnnotation(schema: Schema.Top) {
+  const status = resolveHttpApiStatus(schema.ast)
+  if (status === undefined || resolveHttpApiStatusAnnotation(schema.ast) === status) return schema
+  return schema.annotate({ httpApiStatus: status })
+}
+
+function isStreamSchema(
+  schema: Schema.Top,
+): schema is Exclude<HttpApiSchema.StreamSchema, { readonly _tag: "StreamNdjson" }> {
   return "_tag" in schema && (schema._tag === "StreamSse" || schema._tag === "StreamUint8Array")
 }
 
@@ -1841,7 +1861,7 @@ function renderGroup(group: Group) {
     const inputDeclaration =
       operation.operation.inputMode === "none"
         ? ""
-        : `${opaquePayload ? `type ${prefix}Request = Parameters<RawGroup[${JSON.stringify(endpoint.identifier)}]>[0]\n` : ""}type ${prefix}Input = { ${inputType} }\n`
+        : `${opaquePayload ? `type ${prefix}Request = Parameters<RawGroup[${JSON.stringify(endpoint.identifier)}]>[0] & { readonly responseMode?: "decoded-only" }\n` : ""}type ${prefix}Input = { ${inputType} }\n`
     adapters.push(
       `${inputDeclaration}const ${prefix}DeclaredError = ${declaredSchema}\nconst map${prefix}Error = (error: unknown) => HttpClientError.isHttpClientError(error) || Schema.isSchemaError(error) || Sse.Retry.is(error) ? new ClientError({ cause: error }) : Schema.is(${prefix}DeclaredError)(error) ? error : new ClientError({ cause: error })\nconst ${prefix} = (raw: RawGroup) => (${argument}) => ${operation.operation.success === "stream" ? `Stream.unwrap(${rawCall}.pipe(Effect.mapError(map${prefix}Error), Effect.map((stream) => stream.pipe(Stream.mapError(map${prefix}Error)))))` : mapped}`,
     )
@@ -1922,7 +1942,10 @@ function renderSchemas(slots: ReadonlyArray<Slot>) {
   ]
   const document = SchemaRepresentation.toCodeDocument(
     SchemaRepresentation.toRepresentations(
-      codegenAsts(expanded.map((slot) => slot.schema.ast)) as [SchemaAST.AST, ...Array<SchemaAST.AST>],
+      codegenAsts(expanded.map((slot) => withStatusAnnotation(slot.schema).ast)) as [
+        SchemaAST.AST,
+        ...Array<SchemaAST.AST>,
+      ],
     ),
   )
   const artifacts = document.artifacts.flatMap((artifact) => {

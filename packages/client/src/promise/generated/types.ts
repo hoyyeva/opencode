@@ -2475,7 +2475,7 @@ export type CredentialEntry = {
   value: CredentialValue
 }
 
-export type FormFields2 = [FormField1, ...Array<FormField1>]
+export type FormFields1 = [FormField1, ...Array<FormField1>]
 
 export type AgentInfo = {
   id: AgentID
@@ -2572,7 +2572,7 @@ export type IntegrationExternalMethod = { id: IntegrationMethodID; type: "extern
 
 export type GenerateDecisionsResponse = { data: GenerateDecisionResult }
 
-export type FormInfo1 = { id: FormID; sessionID: string; title: string; metadata?: FormMetadata1; fields: FormFields2 }
+export type FormInfo1 = { id: FormID; sessionID: string; title: string; metadata?: FormMetadata1; fields: FormFields1 }
 
 export type SessionMessageInfo =
   | SessionMessageAgentSelected

@@ -79,8 +79,12 @@ const docTags = (schema: JsonSchema): Array<string> => {
   }
   if (typeof schema.format === "string") tags.push(`@format ${schema.format}`)
   if (schema.type === "integer") tags.push("@integer")
-  if (typeof schema.minimum === "number") tags.push(`@minimum ${schema.minimum}`)
-  if (typeof schema.maximum === "number") tags.push(`@maximum ${schema.maximum}`)
+  // Effect bounds every `Schema.Int` by the safe integer range; those implied bounds tell the model nothing.
+  const integer = schema.type === "integer"
+  if (typeof schema.minimum === "number" && !(integer && schema.minimum === Number.MIN_SAFE_INTEGER))
+    tags.push(`@minimum ${schema.minimum}`)
+  if (typeof schema.maximum === "number" && !(integer && schema.maximum === Number.MAX_SAFE_INTEGER))
+    tags.push(`@maximum ${schema.maximum}`)
   if (typeof schema.exclusiveMinimum === "number") tags.push(`@exclusiveMinimum ${schema.exclusiveMinimum}`)
   if (typeof schema.exclusiveMaximum === "number") tags.push(`@exclusiveMaximum ${schema.exclusiveMaximum}`)
   if (typeof schema.multipleOf === "number") tags.push(`@multipleOf ${schema.multipleOf}`)
@@ -154,7 +158,11 @@ const renderSchema = (
   }
   if (schema.const !== undefined) return renderLiteral(schema.const)
   if (schema.enum) return schema.enum.map(renderLiteral).join(" | ")
-  const alternatives = schema.anyOf ?? schema.oneOf
+  const listed = schema.anyOf ?? schema.oneOf
+  // Effect lists the number sentinels beside a nullable number's other alternatives instead of nesting them.
+  const alternatives = listed?.some((item) => item.type === "number")
+    ? listed.filter((item) => !effectNumberSentinel(item))
+    : listed
   if (alternatives) {
     if (
       alternatives.some((item) => item.type === "number") &&

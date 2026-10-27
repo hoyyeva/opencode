@@ -74,7 +74,7 @@ const make = (options: Config) =>
         }),
     })
 
-    return yield* Sqlite.makeClient(options, connection, TypeId, (acquirer) => ({
+    return yield* Sqlite.makeClient(options, connection, TypeId, "sqlite-bun", (acquirer) => ({
       export: Effect.flatMap(acquirer, (_) => _.export),
       loadExtension: (path: string) => Effect.flatMap(acquirer, (_) => _.loadExtension(path)),
     }))
