@@ -557,12 +557,13 @@ describe("ConfigInstructionPlugin.Plugin", () => {
             yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "AGENTS.md"), "outside"))
             const discovery = yield* start()
             const watcher = yield* Watcher.Test
+            // The native realpath behind FSUtil.resolve returns the drive letter as Windows stores it.
             expect(yield* watcher.subscriptions()).toEqual([
               { path: path.join(global, "AGENTS.md"), type: "file" },
-              { path: path.join(directory, "AGENTS.md"), type: "file" },
+              { path: path.join(project, "AGENTS.md"), type: "file" },
             ])
             expect((yield* readInitial(yield* discovery.load())).text).toBe(
-              `Instructions from: ${path.join(directory, "AGENTS.md")}\nproject`,
+              `Instructions from: ${path.join(project, "AGENTS.md")}\nproject`,
             )
           }).pipe(
             Effect.provide(
